@@ -1,0 +1,61 @@
+
+process scheduler() {
+	state
+    	start,
+	    update,
+    	give;
+	commit
+    	update,
+	    give;
+	init
+    	start;
+	trans
+    	start -> start { guard len< size_sched; sync insert?; assign len++; },
+	    start -> update { guard len>0 && nc>0; sync up!; assign rel_count:= 0; },
+	    update -> give {assign update_queue(T,p,w), dequeue(T,p); },
+    	give -> start { sync en!; assign len--, nc--; };
+}
+
+process Timer_task1(bool &tick_task) {
+
+clock x;
+state
+    start { x <= period[] };
+init
+    start;
+trans
+    start -> start { guard x==50; assign tick_task := true, x:=0; };
+}
+
+process task1_alt(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, $tick_task) {
+
+clock x;
+
+state
+    start,
+    manage,
+    ask { x<=50 }, /* period */
+    decide,
+    error;
+commit
+    count,
+    decide;
+init
+    start;
+trans
+    manage -> manage { guard lock_scan_roblaser && i<size_roblaser-1; sync inter_scan_roblaser!; assign update_roblaser (finished_scan_roblaser, j, tab_roblaser),
+j:= i, i:= next_roblaser (i+1, tab_roblaser, 2), turn_scan_roblaser := tab_roblaser[i]; },
+    manage -> manage { guard lock_scan_roblaser && i<size_roblaser-1; sync begin_scan_roblaser!; assign update_roblaser (finished_scan_roblaser, j, tab_roblaser),
+j:= i, i:= next_roblaser (i+1, tab_roblaser, 2), turn_scan_roblaser := tab_roblaser[i]; },
+    manage -> start { guard lock_scan_roblaser && i == size_roblaser-1; sync exe!; assign nc++, update_roblaser (finished_scan_roblaser, j, tab_roblaser), 
+i:= 0, sched_roblaser:= sched_cntrl_roblaser(tab_roblaser), 
+finished_scan_roblaser:= false; },
+    /* task_id, tick_task */ start -> ask { guard $tick_task; sync insert!; assign p[$task_id]:= len, x:= 0, u:= period[$task_id], d:= 0, w[$task_id]:= 0, $tick_task:= false; },
+    /* period */ ask -> error { guard x == period[$task_id]; },
+    ask -> ask { guard x == 1; assign x := 0, w[[$task_id] := w[[$task_id] + 1 ; },
+    count -> decide { guard x>= w[[$task_id] && x< w[[$task_id]+1; sync cnt?; assign rel_count++; },
+    count -> decide { guard x>= w[4]-1 && x< w[4]; sync cnt?; assign rel_count++, w[4]:= w[4]-1; },
+    count -> decide { guard x== w[4]+1; sync cnt?; assign rel_count++, w[4]:= w[4]+1; },
+    decide -> ask { guard p[$task_id]!=-1; sync en?, d:=w[[$task_id], u:= period[$task_id]; },
+    decide -> manage { guard p[4]==-1 ; sync en?; assign p[$task_id]:=-2; };
+}

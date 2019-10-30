@@ -1,0 +1,89 @@
+/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_$num_task */
+process pTimer_task_$num_task(bool &tick_timer_$num_task) {
+    clock x;
+    state
+        start { x <= period[$num_task] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[$num_task]; assign tick_timer_$num_task := true, x := 0; };
+}
+
+/* process task_$num_task */
+process pTask_$num_task(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_$num_task) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[$num_task]
+        },
+        ask {
+            x<= period[$num_task]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_$num_task;
+            sync insert!;
+            assign p[$num_task] := len, x := 0, u := period[$num_task], d := 0,
+                w[$num_task] := (u+d)/2, tick_timer_$num_task := false;
+        },
+        ask -> error {
+            guard x == period[$num_task];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[$num_task]-1;
+            sync cnt?;
+            assign u := w[$num_task]-1, w[$num_task] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[$num_task]+1;
+            sync cnt?;
+            assign d := w[$num_task]+1, w[$num_task] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[$num_task] && x < w[$num_task] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[$num_task]-1 && x < w[$num_task];
+            sync cnt?;
+            assign rel_count++, w[$num_task]:= w[$num_task]-1;
+        },
+        count -> decide {
+            guard x== w[$num_task]+1;
+            sync cnt?;
+            assign rel_count++, w[$num_task]:= w[$num_task]+1;
+        },
+        decide -> ask {
+            guard p[$num_task]!= -1;
+            sync en?;
+            assign d := w[$num_task], u := period[$num_task];
+        },
+        decide -> manage {
+            guard p[$num_task] == -1;
+            sync en?;
+            assign p[$num_task]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}

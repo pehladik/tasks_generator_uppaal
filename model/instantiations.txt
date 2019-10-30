@@ -1,0 +1,13 @@
+/* Dictonnary
+	list_task_instance : example "Timer_task_1(tick_timer_1)\ntask_1 := pTask_1(insert, up, en, cnt, tick_timer_1)"
+	list_task : example task_0, task_1, ...
+*/
+
+/* instantiations */
+
+$list_task_instance
+
+scheduler:= pScheduler(insert, up, en, cnt);
+
+system 
+scheduler, $list_task;
