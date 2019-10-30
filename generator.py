@@ -49,7 +49,7 @@ dico_instances = {"list_task_instance": '\n'.join(["timer_task_{0} := pTimer_tas
 text += tmp.safe_substitute(dico_instances)
 f.close()
 
-f = open("../exp/{0}.xta".format("toto"),"w")
+f = open("./exp/{0}.xta".format("test"),"w")
 f.write(text)
 f.close()
 

@@ -1,0 +1,1020 @@
+/* Dictonnary
+	nb_core :example: "4"
+	nb_tasks : example: "5"
+	init_wpt : example: "-2,-2,-2,-2,-2"
+	task_periods : example: "50, 50, 200, 50, 50"
+	list_timer : example: "bool timer_1 := false;bool timer_2 := false;"
+	task_wcet
+*/
+
+/* scheduling channels */
+urgent chan insert;
+broadcast chan cnt;
+urgent broadcast chan up, en;
+
+/* scheduling constants & global variables */
+int nc := 4 ;
+int rel_count := 0;
+int len:= 0;
+const int size_sched := 10 ;
+int w[size_sched] := { -2, -2, -2, -2, -2, -2, -2, -2, -2, -2 };
+int p[size_sched] := { -2, -2, -2, -2, -2, -2, -2, -2, -2, -2 };
+int T[size_sched] := { -2, -2, -2, -2, -2, -2, -2, -2, -2, -2 };
+const int period[size_sched] := { 337, 408, 992, 668, 228, 238, 776, 545, 420, 876 };
+const int wcet[size_sched] := { 23, 21, 73, 154, 11, 46, 72, 56, 32, 393 };
+
+/* constants & global variables */
+bool tick_timer_0 := false;
+bool tick_timer_1 := false;
+bool tick_timer_2 := false;
+bool tick_timer_3 := false;
+bool tick_timer_4 := false;
+bool tick_timer_5 := false;
+bool tick_timer_6 := false;
+bool tick_timer_7 := false;
+bool tick_timer_8 := false;
+bool tick_timer_9 := false;
+
+/* scheduling functions */
+void update_queue (int &T[size_sched], int &p[size_sched], int &w[size_sched]) {
+    int i;
+    for (i:= 0; i<size_sched; i++) {
+	    if (p[i] >= 0) {
+	    T[p[i]]:= period[i] - w[i];}
+    }
+}
+
+void dequeue (int &T[size_sched], int &p[size_sched]) {
+    int i;
+    int i_m:= 0;
+    int m:= T[0];
+
+    /* find the cell corresponding to the task to dequeue */
+    for (i:= 1; i<len; i++) {
+        if (T[i] < m) {
+            i_m:= i;
+            m:= T[i];
+        }
+    }
+    /* shift tasks indices */
+    for (i:= 0; i<size_sched; i++) {
+        if (p[i] == i_m) {
+            p[i]:= -1;
+        } else if (p[i] > i_m) {
+            p[i]--;
+        }
+    }
+    /* shift priorities values */
+    for (i:= i_m+1; i<len; i++) {
+        T[i-1]:= T[i];
+    }
+    T[i-1] := -2;
+}
+
+/* Process scheduler */
+process pScheduler(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
+	state
+    	start,
+	    update,
+    	give;
+	commit
+    	update,
+	    give;
+	init
+    	start;
+	trans
+    	start -> start {
+    		guard len< size_sched; 
+    		sync insert?; 
+    		assign len++;
+    	},
+	    start -> update {
+	    	guard len>0 && nc>0;
+	    	sync up!;
+	    	assign rel_count:= 0; 
+	    },
+    	update -> update { 
+    		guard rel_count < len; 
+    		sync cnt!; 
+    	},
+	    update -> give { 
+	    	guard rel_count == len; 
+	    	assign update_queue(T,p,w), dequeue(T,p); 
+	    },
+    	give -> start { 
+    		sync en!; 
+    		assign len--, nc--; 
+    	};
+}
+/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_0 */
+process pTimer_task_0(bool &tick_timer_0) {
+    clock x;
+    state
+        start { x <= period[0] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[0]; assign tick_timer_0 := true, x := 0; };
+}
+
+/* process task_0 */
+process pTask_0(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_0) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[0]
+        },
+        ask {
+            x<= period[0]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_0;
+            sync insert!;
+            assign p[0] := len, x := 0, u := period[0], d := 0,
+                w[0] := (u+d)/2, tick_timer_0 := false;
+        },
+        ask -> error {
+            guard x == period[0];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[0]-1;
+            sync cnt?;
+            assign u := w[0]-1, w[0] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[0]+1;
+            sync cnt?;
+            assign d := w[0]+1, w[0] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[0] && x < w[0] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[0]-1 && x < w[0];
+            sync cnt?;
+            assign rel_count++, w[0]:= w[0]-1;
+        },
+        count -> decide {
+            guard x== w[0]+1;
+            sync cnt?;
+            assign rel_count++, w[0]:= w[0]+1;
+        },
+        decide -> ask {
+            guard p[0]!= -1;
+            sync en?;
+            assign d := w[0], u := period[0];
+        },
+        decide -> manage {
+            guard p[0] == -1;
+            sync en?;
+            assign p[0]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_1 */
+process pTimer_task_1(bool &tick_timer_1) {
+    clock x;
+    state
+        start { x <= period[1] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[1]; assign tick_timer_1 := true, x := 0; };
+}
+
+/* process task_1 */
+process pTask_1(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_1) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[1]
+        },
+        ask {
+            x<= period[1]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_1;
+            sync insert!;
+            assign p[1] := len, x := 0, u := period[1], d := 0,
+                w[1] := (u+d)/2, tick_timer_1 := false;
+        },
+        ask -> error {
+            guard x == period[1];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[1]-1;
+            sync cnt?;
+            assign u := w[1]-1, w[1] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[1]+1;
+            sync cnt?;
+            assign d := w[1]+1, w[1] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[1] && x < w[1] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[1]-1 && x < w[1];
+            sync cnt?;
+            assign rel_count++, w[1]:= w[1]-1;
+        },
+        count -> decide {
+            guard x== w[1]+1;
+            sync cnt?;
+            assign rel_count++, w[1]:= w[1]+1;
+        },
+        decide -> ask {
+            guard p[1]!= -1;
+            sync en?;
+            assign d := w[1], u := period[1];
+        },
+        decide -> manage {
+            guard p[1] == -1;
+            sync en?;
+            assign p[1]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_2 */
+process pTimer_task_2(bool &tick_timer_2) {
+    clock x;
+    state
+        start { x <= period[2] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[2]; assign tick_timer_2 := true, x := 0; };
+}
+
+/* process task_2 */
+process pTask_2(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_2) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[2]
+        },
+        ask {
+            x<= period[2]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_2;
+            sync insert!;
+            assign p[2] := len, x := 0, u := period[2], d := 0,
+                w[2] := (u+d)/2, tick_timer_2 := false;
+        },
+        ask -> error {
+            guard x == period[2];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[2]-1;
+            sync cnt?;
+            assign u := w[2]-1, w[2] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[2]+1;
+            sync cnt?;
+            assign d := w[2]+1, w[2] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[2] && x < w[2] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[2]-1 && x < w[2];
+            sync cnt?;
+            assign rel_count++, w[2]:= w[2]-1;
+        },
+        count -> decide {
+            guard x== w[2]+1;
+            sync cnt?;
+            assign rel_count++, w[2]:= w[2]+1;
+        },
+        decide -> ask {
+            guard p[2]!= -1;
+            sync en?;
+            assign d := w[2], u := period[2];
+        },
+        decide -> manage {
+            guard p[2] == -1;
+            sync en?;
+            assign p[2]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_3 */
+process pTimer_task_3(bool &tick_timer_3) {
+    clock x;
+    state
+        start { x <= period[3] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[3]; assign tick_timer_3 := true, x := 0; };
+}
+
+/* process task_3 */
+process pTask_3(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_3) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[3]
+        },
+        ask {
+            x<= period[3]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_3;
+            sync insert!;
+            assign p[3] := len, x := 0, u := period[3], d := 0,
+                w[3] := (u+d)/2, tick_timer_3 := false;
+        },
+        ask -> error {
+            guard x == period[3];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[3]-1;
+            sync cnt?;
+            assign u := w[3]-1, w[3] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[3]+1;
+            sync cnt?;
+            assign d := w[3]+1, w[3] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[3] && x < w[3] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[3]-1 && x < w[3];
+            sync cnt?;
+            assign rel_count++, w[3]:= w[3]-1;
+        },
+        count -> decide {
+            guard x== w[3]+1;
+            sync cnt?;
+            assign rel_count++, w[3]:= w[3]+1;
+        },
+        decide -> ask {
+            guard p[3]!= -1;
+            sync en?;
+            assign d := w[3], u := period[3];
+        },
+        decide -> manage {
+            guard p[3] == -1;
+            sync en?;
+            assign p[3]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_4 */
+process pTimer_task_4(bool &tick_timer_4) {
+    clock x;
+    state
+        start { x <= period[4] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[4]; assign tick_timer_4 := true, x := 0; };
+}
+
+/* process task_4 */
+process pTask_4(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_4) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[4]
+        },
+        ask {
+            x<= period[4]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_4;
+            sync insert!;
+            assign p[4] := len, x := 0, u := period[4], d := 0,
+                w[4] := (u+d)/2, tick_timer_4 := false;
+        },
+        ask -> error {
+            guard x == period[4];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[4]-1;
+            sync cnt?;
+            assign u := w[4]-1, w[4] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[4]+1;
+            sync cnt?;
+            assign d := w[4]+1, w[4] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[4] && x < w[4] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[4]-1 && x < w[4];
+            sync cnt?;
+            assign rel_count++, w[4]:= w[4]-1;
+        },
+        count -> decide {
+            guard x== w[4]+1;
+            sync cnt?;
+            assign rel_count++, w[4]:= w[4]+1;
+        },
+        decide -> ask {
+            guard p[4]!= -1;
+            sync en?;
+            assign d := w[4], u := period[4];
+        },
+        decide -> manage {
+            guard p[4] == -1;
+            sync en?;
+            assign p[4]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_5 */
+process pTimer_task_5(bool &tick_timer_5) {
+    clock x;
+    state
+        start { x <= period[5] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[5]; assign tick_timer_5 := true, x := 0; };
+}
+
+/* process task_5 */
+process pTask_5(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_5) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[5]
+        },
+        ask {
+            x<= period[5]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_5;
+            sync insert!;
+            assign p[5] := len, x := 0, u := period[5], d := 0,
+                w[5] := (u+d)/2, tick_timer_5 := false;
+        },
+        ask -> error {
+            guard x == period[5];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[5]-1;
+            sync cnt?;
+            assign u := w[5]-1, w[5] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[5]+1;
+            sync cnt?;
+            assign d := w[5]+1, w[5] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[5] && x < w[5] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[5]-1 && x < w[5];
+            sync cnt?;
+            assign rel_count++, w[5]:= w[5]-1;
+        },
+        count -> decide {
+            guard x== w[5]+1;
+            sync cnt?;
+            assign rel_count++, w[5]:= w[5]+1;
+        },
+        decide -> ask {
+            guard p[5]!= -1;
+            sync en?;
+            assign d := w[5], u := period[5];
+        },
+        decide -> manage {
+            guard p[5] == -1;
+            sync en?;
+            assign p[5]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_6 */
+process pTimer_task_6(bool &tick_timer_6) {
+    clock x;
+    state
+        start { x <= period[6] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[6]; assign tick_timer_6 := true, x := 0; };
+}
+
+/* process task_6 */
+process pTask_6(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_6) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[6]
+        },
+        ask {
+            x<= period[6]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_6;
+            sync insert!;
+            assign p[6] := len, x := 0, u := period[6], d := 0,
+                w[6] := (u+d)/2, tick_timer_6 := false;
+        },
+        ask -> error {
+            guard x == period[6];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[6]-1;
+            sync cnt?;
+            assign u := w[6]-1, w[6] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[6]+1;
+            sync cnt?;
+            assign d := w[6]+1, w[6] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[6] && x < w[6] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[6]-1 && x < w[6];
+            sync cnt?;
+            assign rel_count++, w[6]:= w[6]-1;
+        },
+        count -> decide {
+            guard x== w[6]+1;
+            sync cnt?;
+            assign rel_count++, w[6]:= w[6]+1;
+        },
+        decide -> ask {
+            guard p[6]!= -1;
+            sync en?;
+            assign d := w[6], u := period[6];
+        },
+        decide -> manage {
+            guard p[6] == -1;
+            sync en?;
+            assign p[6]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_7 */
+process pTimer_task_7(bool &tick_timer_7) {
+    clock x;
+    state
+        start { x <= period[7] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[7]; assign tick_timer_7 := true, x := 0; };
+}
+
+/* process task_7 */
+process pTask_7(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_7) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[7]
+        },
+        ask {
+            x<= period[7]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_7;
+            sync insert!;
+            assign p[7] := len, x := 0, u := period[7], d := 0,
+                w[7] := (u+d)/2, tick_timer_7 := false;
+        },
+        ask -> error {
+            guard x == period[7];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[7]-1;
+            sync cnt?;
+            assign u := w[7]-1, w[7] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[7]+1;
+            sync cnt?;
+            assign d := w[7]+1, w[7] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[7] && x < w[7] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[7]-1 && x < w[7];
+            sync cnt?;
+            assign rel_count++, w[7]:= w[7]-1;
+        },
+        count -> decide {
+            guard x== w[7]+1;
+            sync cnt?;
+            assign rel_count++, w[7]:= w[7]+1;
+        },
+        decide -> ask {
+            guard p[7]!= -1;
+            sync en?;
+            assign d := w[7], u := period[7];
+        },
+        decide -> manage {
+            guard p[7] == -1;
+            sync en?;
+            assign p[7]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_8 */
+process pTimer_task_8(bool &tick_timer_8) {
+    clock x;
+    state
+        start { x <= period[8] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[8]; assign tick_timer_8 := true, x := 0; };
+}
+
+/* process task_8 */
+process pTask_8(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_8) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[8]
+        },
+        ask {
+            x<= period[8]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_8;
+            sync insert!;
+            assign p[8] := len, x := 0, u := period[8], d := 0,
+                w[8] := (u+d)/2, tick_timer_8 := false;
+        },
+        ask -> error {
+            guard x == period[8];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[8]-1;
+            sync cnt?;
+            assign u := w[8]-1, w[8] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[8]+1;
+            sync cnt?;
+            assign d := w[8]+1, w[8] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[8] && x < w[8] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[8]-1 && x < w[8];
+            sync cnt?;
+            assign rel_count++, w[8]:= w[8]-1;
+        },
+        count -> decide {
+            guard x== w[8]+1;
+            sync cnt?;
+            assign rel_count++, w[8]:= w[8]+1;
+        },
+        decide -> ask {
+            guard p[8]!= -1;
+            sync en?;
+            assign d := w[8], u := period[8];
+        },
+        decide -> manage {
+            guard p[8] == -1;
+            sync en?;
+            assign p[8]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	num_task : example "1"
+*/
+
+/* process Timer_task_9 */
+process pTimer_task_9(bool &tick_timer_9) {
+    clock x;
+    state
+        start { x <= period[9] };
+    init
+        start;
+    trans
+        start -> start { guard x == period[9]; assign tick_timer_9 := true, x := 0; };
+}
+
+/* process task_9 */
+process pTask_9(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt, bool &tick_timer_9) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[9]
+        },
+        ask {
+            x<= period[9]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> start;
+        start -> ask {
+            guard tick_timer_9;
+            sync insert!;
+            assign p[9] := len, x := 0, u := period[9], d := 0,
+                w[9] := (u+d)/2, tick_timer_9 := false;
+        },
+        ask -> error {
+            guard x == period[9];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[9]-1;
+            sync cnt?;
+            assign u := w[9]-1, w[9] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[9]+1;
+            sync cnt?;
+            assign d := w[9]+1, w[9] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[9] && x < w[9] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[9]-1 && x < w[9];
+            sync cnt?;
+            assign rel_count++, w[9]:= w[9]-1;
+        },
+        count -> decide {
+            guard x== w[9]+1;
+            sync cnt?;
+            assign rel_count++, w[9]:= w[9]+1;
+        },
+        decide -> ask {
+            guard p[9]!= -1;
+            sync en?;
+            assign d := w[9], u := period[9];
+        },
+        decide -> manage {
+            guard p[9] == -1;
+            sync en?;
+            assign p[9]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}/* Dictonnary
+	list_task_instance : example "Timer_task_1(tick_timer_1)\ntask_1 := pTask_1(insert, up, en, cnt, tick_timer_1)"
+	list_task : example task_0, task_1, ...
+*/
+
+/* instantiations */
+
+timer_task_0 := pTimer_task_0(tick_timer_0);
+task_0 := pTask_0(insert, up, en, cnt, tick_timer_0);
+timer_task_1 := pTimer_task_1(tick_timer_1);
+task_1 := pTask_1(insert, up, en, cnt, tick_timer_1);
+timer_task_2 := pTimer_task_2(tick_timer_2);
+task_2 := pTask_2(insert, up, en, cnt, tick_timer_2);
+timer_task_3 := pTimer_task_3(tick_timer_3);
+task_3 := pTask_3(insert, up, en, cnt, tick_timer_3);
+timer_task_4 := pTimer_task_4(tick_timer_4);
+task_4 := pTask_4(insert, up, en, cnt, tick_timer_4);
+timer_task_5 := pTimer_task_5(tick_timer_5);
+task_5 := pTask_5(insert, up, en, cnt, tick_timer_5);
+timer_task_6 := pTimer_task_6(tick_timer_6);
+task_6 := pTask_6(insert, up, en, cnt, tick_timer_6);
+timer_task_7 := pTimer_task_7(tick_timer_7);
+task_7 := pTask_7(insert, up, en, cnt, tick_timer_7);
+timer_task_8 := pTimer_task_8(tick_timer_8);
+task_8 := pTask_8(insert, up, en, cnt, tick_timer_8);
+timer_task_9 := pTimer_task_9(tick_timer_9);
+task_9 := pTask_9(insert, up, en, cnt, tick_timer_9);
+
+scheduler:= pScheduler(insert, up, en, cnt);
+
+system 
+scheduler, task_0, task_1, task_2, task_3, task_4, task_5, task_6, task_7, task_8, task_9;
