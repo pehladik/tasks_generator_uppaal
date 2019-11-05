@@ -34,7 +34,6 @@ process pTask_$num_task(urgent chan &insert, urgent broadcast chan &up, urgent b
     init
         start;
     trans
-        start -> start;
         start -> ask {
             guard tick_timer_$num_task;
             sync insert!;
