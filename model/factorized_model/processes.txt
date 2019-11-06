@@ -1,0 +1,125 @@
+/* Process scheduler */
+process pScheduler(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
+	state
+    	start,
+	    update,
+    	give;
+	commit
+    	update,
+	    give;
+	init
+    	start;
+	trans
+    	start -> start {
+    		guard len< size_sched; 
+    		sync insert?; 
+    		assign len++;
+    	},
+	    start -> update {
+	    	guard len>0 && nc>0;
+	    	sync up!;
+	    	assign rel_count:= 0; 
+	    },
+    	update -> update { 
+    		guard rel_count < len; 
+    		sync cnt!; 
+    	},
+	    update -> give { 
+	    	guard rel_count == len; 
+	    	assign update_queue(T,p,w), dequeue(T,p); 
+	    },
+    	give -> start { 
+    		sync en!; 
+    		assign len--, nc--; 
+    	};
+}
+
+/* process pTimer */
+process pTimer(int idx_task) {
+    clock x;
+    state
+        start {
+            x <= period[idx_task]
+        };
+    init
+        start;
+    trans
+        start -> start {
+            guard x == period[idx_task];
+            assign timer_values[idx_task] := true, x := 0;
+        };
+}
+
+/* process pTask*/
+process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
+    clock x;
+    int u,d;
+    state
+        start,
+        manage{
+            x <= wcet[idx_task]
+        },
+        ask {
+            x<= period[idx_task]
+        },
+        count,
+        decide,
+        error;
+    commit
+        count,
+        decide;
+    init
+        start;
+    trans
+        start -> ask {
+            guard timer_values[idx_task];
+            sync insert!;
+            assign p[idx_task] := len, x := 0, u := period[idx_task], d := 0,
+                w[idx_task] := (u+d)/2, timer_values[idx_task] := false;
+        },
+        ask -> error {
+            guard x == period[idx_task];
+        },
+        ask -> count {
+            sync up?;
+        },
+        count -> count {
+            guard x< w[idx_task]-1;
+            sync cnt?;
+            assign u := w[idx_task]-1, w[idx_task] := (u+d)/2;
+        },
+        count -> count {
+            guard x> w[idx_task]+1;
+            sync cnt?;
+            assign d := w[idx_task]+1, w[idx_task] := (u+d)/2;
+        },
+        count -> decide {
+            guard x >= w[idx_task] && x < w[idx_task] + 1;
+            sync cnt?;
+            assign rel_count++;
+        },
+        count -> decide {
+            guard x >= w[idx_task]-1 && x < w[idx_task];
+            sync cnt?;
+            assign rel_count++, w[idx_task]:= w[idx_task]-1;
+        },
+        count -> decide {
+            guard x== w[idx_task]+1;
+            sync cnt?;
+            assign rel_count++, w[idx_task]:= w[idx_task]+1;
+        },
+        decide -> ask {
+            guard p[idx_task]!= -1;
+            sync en?;
+            assign d := w[idx_task], u := period[idx_task];
+        },
+        decide -> manage {
+            guard p[idx_task] == -1;
+            sync en?;
+            assign p[idx_task]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}

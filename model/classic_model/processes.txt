@@ -1,0 +1,97 @@
+/* Process scheduler */
+process pScheduler(urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
+	state
+    	start,
+	    update,
+    	give;
+	commit
+    	update,
+	    give;
+	init
+    	start;
+	trans
+    	start -> start {
+    		guard len< size_sched;
+    		sync insert?;
+    		assign len++;
+    	},
+	    start -> update {
+	    	guard len>0 && nc>0;
+	    	sync up!;
+	    	assign rel_count:= 0;
+	    },
+    	update -> update {
+    		guard rel_count < len;
+    		sync cnt!;
+    	},
+	    update -> give {
+	    	guard rel_count == len;
+	    	assign update_queue(T,p,w), dequeue(T,p);
+	    },
+    	give -> start {
+    		sync en!;
+    		assign len--, nc--;
+    	};
+}
+
+/* process pTimer */
+process pTimer(int idx_task) {
+    clock x;
+    state
+        start {
+            x <= period[idx_task]
+        };
+    init
+        start;
+    trans
+        start -> start {
+            guard x == period[idx_task];
+            assign timer_values[idx_task] := true, x := 0;
+        };
+}
+
+/* process pTask*/
+process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
+    clock x;
+    state
+        start,
+        manage{
+            x <= wcet[idx_task]
+        },
+        ask {
+            x<= 1
+        },
+        decide;
+    commit
+        decide;
+    init
+        start;
+    trans
+        start -> ask {
+            guard timer_values[idx_task];
+            sync insert!;
+            assign p[idx_task] := len, x := 0,
+                w[idx_task] := 0, timer_values[idx_task] := false;
+        },
+        ask -> ask {
+            guard x == 1;
+            assign x := 0, w[idx_task] := w[idx_task] + 1 ;
+        },
+        ask -> decide {
+            sync up?;
+        },
+        decide -> ask {
+            guard p[idx_task]!= -1;
+            sync en?;
+            assign x := 0 ;
+        },
+        decide -> manage {
+            guard p[idx_task] == -1;
+            sync en?;
+            assign p[idx_task]:= -2, x := 0;
+        },
+        manage -> start {
+            guard x > 0;
+            assign nc++;
+        };
+}

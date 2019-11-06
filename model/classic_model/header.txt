@@ -1,0 +1,55 @@
+/* scheduling channels */
+urgent chan insert;
+broadcast chan cnt;
+urgent broadcast chan up, en;
+
+/* scheduling constants & global variables */
+int nc := $nb_core ;
+int rel_count := 0;
+int len:= 0;
+const int size_sched := $nb_tasks ;
+int w[size_sched] := { $init_wpt };
+int p[size_sched] := { $init_wpt };
+int T[size_sched] := { $init_wpt };
+const int period[size_sched] := { $task_periods };
+const int wcet[size_sched] := { $task_wcet };
+
+/* constants & global variables */
+bool timer_values[size_sched] := { $init_value_timer };
+
+/* scheduling functions */
+void update_queue (int &T[size_sched], int &p[size_sched], int &w[size_sched]) {
+    int i;
+    for (i:= 0; i<size_sched; i++) {
+	    if (p[i] >= 0) {
+	    T[p[i]]:= period[i] - w[i];}
+    }
+}
+
+void dequeue (int &T[size_sched], int &p[size_sched]) {
+    int i;
+    int i_m:= 0;
+    int m:= T[0];
+
+    /* find the cell corresponding to the task to dequeue */
+    for (i:= 1; i<len; i++) {
+        if (T[i] < m) {
+            i_m:= i;
+            m:= T[i];
+        }
+    }
+    /* shift tasks indices */
+    for (i:= 0; i<size_sched; i++) {
+        if (p[i] == i_m) {
+            p[i]:= -1;
+        } else if (p[i] > i_m) {
+            p[i]--;
+        }
+    }
+    /* shift priorities values */
+    for (i:= i_m+1; i<len; i++) {
+        T[i-1]:= T[i];
+    }
+    T[i-1] := -2;
+}
+
