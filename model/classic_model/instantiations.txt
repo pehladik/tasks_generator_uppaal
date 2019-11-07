@@ -5,4 +5,4 @@ $list_task_instance
 scheduler:= pScheduler(insert, up, en, cnt);
 
 system 
-scheduler, $list_task;
+scheduler, $list_timer, $list_task;

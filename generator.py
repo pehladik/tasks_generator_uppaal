@@ -45,7 +45,8 @@ def write_classic_model(taskset, name="test"):
     f = open("./model/classic_model/instantiations.txt")
     tmp = Template(f.read())
     dico_instances = {"list_task_instance": '\n'.join(["timer_task_{0} := pTimer({0});\ntask_{0} := pTask({0}, insert, up, en, cnt);".format(i) for i in range(0,nb_tasks)]),
-                      "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)])}
+                      "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)]),
+                      "list_timer":', '.join(["timer_task_{0}".format(i) for i in range(0,nb_tasks)])}
 
     text += tmp.safe_substitute(dico_instances)
     f.close()
@@ -75,7 +76,8 @@ def write_dichotomic_model(taskset, name="test"):
     f = open("./model/factorized_model/instantiations.txt")
     tmp = Template(f.read())
     dico_instances = {"list_task_instance": '\n'.join(["timer_task_{0} := pTimer({0});\ntask_{0} := pTask({0}, insert, up, en, cnt);".format(i) for i in range(0,nb_tasks)]),
-                      "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)])}
+                      "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)]),
+                      "list_timer":', '.join(["timer_task_{0}".format(i) for i in range(0,nb_tasks)])}
 
     text += tmp.safe_substitute(dico_instances)
     f.close()
@@ -129,89 +131,16 @@ def model1():
 	f.write(text)
 	f.close()
 
-def model2(): #factorized
-	f = open("./model/factorized_model/header.txt")
-	tmp = Template(f.read())
-	f.close()
-
-	periods = task_generator.gen_periods_uniform(nb_tasks, nsets, 100, 1000, True)
-	wcet = task_generator.gen_uunifastdiscard(nsets, utilization_factor, nb_tasks)
-	tasksets = task_generator.gen_tasksets(wcet, periods)
-
-	#print(sum([a[0]/a[1] for a in zip([int(max(1,p[0]*p[1])) for p in zip(wcet[0],periods[0])], periods[0])]))
-
-	dico_header = {
-		"nb_core":str(nb_cores),
-		"nb_tasks":str(nb_tasks),
-		"init_wpt":', '.join(["-2" for p in periods[0]]),
-		"task_periods":', '.join([str(int(p)) for p in periods[0]]),
-		"task_wcet":', '.join([str(int(max(1,p[0]*p[1]))) for p in zip(wcet[0],periods[0])]),
-		"init_value_timer": ', '.join(["false" for p in zip(wcet[0],periods[0])])}
-
-	text = tmp.safe_substitute(dico_header)
-
-	f = open("./model/factorized_model/processes.txt")
-	text += f.read()
-	f.close()
-
-
-	f = open("./model/factorized_model/instantiations.txt")
-	tmp = Template(f.read())
-	dico_instances = {"list_task_instance": '\n'.join(["timer_task_{0} := pTimer({0});\ntask_{0} := pTask({0}, insert, up, en, cnt);".format(i) for i in range(0,nb_tasks)]),
-					  "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)])}
-
-	text += tmp.safe_substitute(dico_instances)
-	f.close()
-
-	f = open("./exp/{0}.xta".format("test"),"w")
-	f.write(text)
-	f.close()
-
-def model3(): #classic
-	f = open("./model/classic_model/header.txt")
-	tmp = Template(f.read())
-	f.close()
-
-	periods = task_generator.gen_periods_uniform(nb_tasks, nsets, 100, 1000, True)
-	wcet = task_generator.gen_uunifastdiscard(nsets, utilization_factor, nb_tasks)
-	tasksets = task_generator.gen_tasksets(wcet, periods)
-
-	#print(sum([a[0]/a[1] for a in zip([int(max(1,p[0]*p[1])) for p in zip(wcet[0],periods[0])], periods[0])]))
-
-	dico_header = {
-		"nb_core":str(nb_cores),
-		"nb_tasks":str(nb_tasks),
-		"init_wpt":', '.join(["-2" for p in periods[0]]),
-		"task_periods":', '.join([str(int(p)) for p in periods[0]]),
-		"task_wcet":', '.join([str(int(max(1,p[0]*p[1]))) for p in zip(wcet[0],periods[0])]),
-		"init_value_timer": ', '.join(["false" for p in zip(wcet[0],periods[0])])}
-
-	text = tmp.safe_substitute(dico_header)
-
-	f = open("./model/classic_model/processes.txt")
-	text += f.read()
-	f.close()
-
-
-	f = open("./model/classic_model/instantiations.txt")
-	tmp = Template(f.read())
-	dico_instances = {"list_task_instance": '\n'.join(["timer_task_{0} := pTimer({0});\ntask_{0} := pTask({0}, insert, up, en, cnt);".format(i) for i in range(0,nb_tasks)]),
-					  "list_task":', '.join(["task_{0}".format(i) for i in range(0,nb_tasks)])}
-
-	text += tmp.safe_substitute(dico_instances)
-	f.close()
-
-	f = open("./exp/{0}.xta".format("test"),"w")
-	f.write(text)
-	f.close()
 
 nb_cores = 4
-nsets = 1
-nb_tasks = 10
-utilization_factor = 1.4
+nsets = 2
+nb_tasks = 65
+utilization_factor = 3.5
 
-tasksets = generate_param(nb_tasks, nsets, utilization_factor, [10, 50, 100, 200], True)
+tasksets = generate_param(nb_tasks, nsets, utilization_factor, [10,20,50,100,200], True)
+print compute_utilization_factor(tasksets[0])
 
-write_classic_model(tasksets[0], "test_classic")
-write_dichotomic_model(tasksets[0], "test_dicho")
 
+for i in range(0,nsets):
+    write_classic_model(tasksets[i], "classic_{0}".format(i))
+    write_dichotomic_model(tasksets[i], "dicho_{0}".format(i))
