@@ -1,7 +1,11 @@
 /* scheduling channels */
-urgent chan insert;
+urgent chan insert, exe;
 broadcast chan cnt;
-urgent broadcast chan up, en;
+urgent broadcast chan up, en, exe2;
+
+/* priority */
+chan priority default < up < insert < exe < exe2;
+
 
 /* scheduling constants & global variables */
 int nc := $nb_core ;
@@ -13,6 +17,7 @@ int p[size_sched] := { $init_wpt };
 int T[size_sched] := { $init_wpt };
 const int period[size_sched] := { $task_periods };
 const int wcet[size_sched] := { $task_wcet };
+const int bcet[size_sched] := { $task_bcet };
 
 /* constants & global variables */
 bool timer_values[size_sched] := { $init_value_timer };

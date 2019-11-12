@@ -20,6 +20,12 @@ def generate_param(nb_tasks, nb_sets, utilization_factor, periods = None, round_
     return tasksets
 
 
+def compute_bcet(wcet, factor):
+    bcet = []
+    for w in wcet:
+        bcet.append(max(1,int(w*factor)))
+    return bcet
+
 def compute_utilization_factor(taskset):
     return sum([float(e[0])/e[1] for e in taskset])
 
@@ -35,6 +41,7 @@ def write_classic_model(taskset, name="test"):
         "init_wpt":', '.join(["-2"]*len(taskset)),
         "task_periods":', '.join([str(int(p[1])) for p in taskset]),
         "task_wcet":', '.join([str(p[0]) for p in taskset]),
+        "task_bcet":', '.join([str(e) for e in (compute_bcet([p[0] for p in taskset], 0.75))]),
         "init_value_timer": ', '.join(["false"]*len(taskset))}
 
     text = tmp.safe_substitute(dico_header)
@@ -66,6 +73,7 @@ def write_dichotomic_model(taskset, name="test"):
         "init_wpt":', '.join(["-2"]*len(taskset)),
         "task_periods":', '.join([str(int(p[1])) for p in taskset]),
         "task_wcet":', '.join([str(p[0]) for p in taskset]),
+        "task_bcet":', '.join([str(e) for e in (compute_bcet([p[0] for p in taskset], 0.75))]),
         "init_value_timer": ', '.join(["false"]*len(taskset))}
 
     text = tmp.safe_substitute(dico_header)
@@ -83,6 +91,17 @@ def write_dichotomic_model(taskset, name="test"):
     f.close()
 
     f = open("./exp/{0}.xta".format(name),"w")
+    f.write(text)
+    f.close()
+
+
+def write_query(nb_task, name):
+    text = ""
+    for i in range(0,nb_tasks):
+        text += "A[] (not task_{0}.start imply not timer_values[{0}])\n".format(i)
+    text += "A[] not urg.stop"
+
+    f = open("./exp/{0}.q".format(name),"w")
     f.write(text)
     f.close()
 
@@ -134,8 +153,8 @@ def model1():
 
 nb_cores = 4
 nsets = 2
-nb_tasks = 65
-utilization_factor = 3.5
+nb_tasks = 5
+utilization_factor = 3.4
 
 tasksets = generate_param(nb_tasks, nsets, utilization_factor, [10,20,50,100,200], True)
 print compute_utilization_factor(tasksets[0])
@@ -144,3 +163,4 @@ print compute_utilization_factor(tasksets[0])
 for i in range(0,nsets):
     write_classic_model(tasksets[i], "classic_{0}".format(i))
     write_dichotomic_model(tasksets[i], "dicho_{0}".format(i))
+    write_query(nb_tasks, "query")

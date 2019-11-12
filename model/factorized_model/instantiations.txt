@@ -2,7 +2,8 @@
 /* instantiations */
 $list_task_instance
 
+urg:= urgency();
 scheduler:= pScheduler(insert, up, en, cnt);
 
 system 
-scheduler, $list_timer, $list_task;
+urg, scheduler, $list_timer, $list_task;

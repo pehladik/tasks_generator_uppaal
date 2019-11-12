@@ -11,27 +11,36 @@ process pScheduler(urgent chan &insert, urgent broadcast chan &up, urgent broadc
     	start;
 	trans
     	start -> start {
-    		guard len< size_sched;
     		sync insert?;
     		assign len++;
     	},
 	    start -> update {
 	    	guard len>0 && nc>0;
 	    	sync up!;
-	    	assign rel_count:= 0;
 	    },
-    	update -> update {
-    		guard rel_count < len;
-    		sync cnt!;
-    	},
 	    update -> give {
-	    	guard rel_count == len;
 	    	assign update_queue(T,p,w), dequeue(T,p);
 	    },
     	give -> start {
     		sync en!;
     		assign len--, nc--;
     	};
+}
+
+/* process urgency */
+process urgency() {
+    state
+        stop,
+        inter,
+        start;
+    init start;
+    trans
+        inter -> stop {
+            sync exe2!;
+        },
+        start -> inter {
+            sync exe?;
+        };
 }
 
 /* process pTimer */
@@ -50,10 +59,11 @@ process pTimer(int idx_task) {
         };
 }
 
-/* process pTask*/
+/* process pTask */
 process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urgent broadcast chan &en, broadcast chan &cnt) {
     clock x;
     state
+        error,
         start,
         manage{
             x <= wcet[idx_task]
@@ -67,6 +77,22 @@ process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urge
     init
         start;
     trans
+        manage -> error {
+            sync exe2?;
+        },
+        decide -> error {
+            sync exe2?;
+        },
+        start -> error {
+            sync exe2?;
+        },
+        ask -> error {
+            sync exe2?;
+        },
+        ask -> error {
+            guard w[idx_task] == period[idx_task];
+            sync exe!;
+        },
         start -> ask {
             guard timer_values[idx_task];
             sync insert!;
@@ -75,8 +101,9 @@ process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urge
         },
         ask -> ask {
             guard x == 1;
-            assign x := 0, w[idx_task] := w[idx_task] + 1 ;
-        },
+            sync cnt!;
+            assign x := 0,
+            w[idx_task] := w[idx_task] + 1;  },
         ask -> decide {
             sync up?;
         },
@@ -91,7 +118,7 @@ process pTask(int idx_task, urgent chan &insert, urgent broadcast chan &up, urge
             assign p[idx_task]:= -2, x := 0;
         },
         manage -> start {
-            guard x > 0;
+            guard x >= bcet[idx_task];
             assign nc++;
         };
 }
